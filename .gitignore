@@ -9,6 +9,7 @@
 *.iobj
 *.tmp
 *.sln
+*.csproj
 
 .vs/
 *_[Dd]ata/
