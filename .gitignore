@@ -10,6 +10,8 @@
 *.tmp
 *.sln
 *.csproj
+*.db
+*.apk
 
 .vs/
 *_[Dd]ata/
