@@ -1,60 +1,72 @@
-﻿using System;
-using System.Collections;
+﻿using System.Collections.Generic;
+
 using UnityEngine;
+using NavMeshAgent = UnityEngine.AI.NavMeshAgent;
 
-[ExecuteInEditMode]
-public class MonstersSystem : MonoBehaviour, ISystem {
+public class MonstersSystem : MonoBehaviour {
 
-    public GameObject monsters;
     Vector3 respawnPosition, finishPosition;
 
-    GameObject weakMonster;
+    List<GameObject> monstersPrefabs;
 
-    int count = 0;
+    const int kMONSTERS_MAX = 10;
+    int monstersCount = 0;
 
     void Start()
     {
         respawnPosition = GameObject.FindWithTag("Respawn").transform.position;
         finishPosition = GameObject.FindWithTag("Finish").transform.position;
 
-        weakMonster = Resources.Load<GameObject>("Prefabs/MonsterWeak");
-    }
+        monstersPrefabs = new List<GameObject>();
 
-    void FixedUpdate()
-    {
-        StartCoroutine(ProduceMonsters());
+        var prefabs = Resources.LoadAll<GameObject>("Prefabs/Monsters");
 
-        if (count > 10)
-            StopCoroutine(ProduceMonsters());
-    }
+        foreach (var prefab in prefabs) {
+            if (prefab.GetComponent<MonsterComponent>() != null) {
+                if (prefab.GetComponent<NavMeshAgent>() == null) {
+                    Debug.LogError("Prefab has 'MonsterComponent', but doesn't have 'NavMeshAgent'.");
+                    continue;
+                }
 
-    IEnumerator ProduceMonsters()
-    {
-        yield return new WaitForSeconds(5);
+                monstersPrefabs.Add(prefab);
+            }
+        }
 
-        monsters = Instantiate<GameObject>(weakMonster, respawnPosition, Quaternion.identity);
-
-        var agent = monsters.AddComponent<UnityEngine.AI.NavMeshAgent>();
-        agent.SetDestination(finishPosition);
-
-        ++count;
-    }
-
-    void ISystem.UpdateSystem()
-    {
-        throw new NotImplementedException();
+        InvokeRepeating("AddMonster", 2.0f, 2.0f);
     }
 
     void AddMonster()
     {
+        //foreach (var monstersPrefab in monstersPrefabs)
+        InstantiateMonster(monstersPrefabs[0], respawnPosition, Quaternion.identity);
+
+        if (monstersCount >= kMONSTERS_MAX)
+            CancelInvoke();
+    }
+
+    void InstantiateMonster(GameObject prefab, Vector3 position, Quaternion rotation)
+    {
+        var monster = Instantiate<GameObject>(prefab, position, rotation);
+
+        if (monster == null) {
+            Debug.LogAssertion("Can't instantiate prefab.");
+            return;
+        }
+
+        try {
+            monster.GetComponent<NavMeshAgent>().SetDestination(finishPosition);
+        }
+
+        catch {
+            Debug.LogAssertion("Can't set agent destination.");
+            DestroyImmediate(monster);
+            return;
+        }
+
+        ++monstersCount;
     }
 
     void KillMonster()
     {
-    }
-
-    void Reset()
-    {
-        //monsters = FindObjectsOfType<MonsterComponent>();
     }
 }
