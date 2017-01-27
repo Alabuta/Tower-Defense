@@ -1,23 +1,22 @@
 ﻿using UnityEngine;
 using NavMeshAgent = UnityEngine.AI.NavMeshAgent;
 
-[ExecuteInEditMode, RequireComponent(typeof(NavMeshAgent))]
+[RequireComponent(typeof(SphereCollider), typeof(NavMeshAgent))]
 public class MonsterComponent : MonoBehaviour {
 
-    [SerializeField]
     public MonsterParams monsterParams;
+
+    [HideInInspector]
+    public int health = 0;
 
     void Reset()
     {
-        var agent = gameObject.GetComponent<NavMeshAgent>();
-
-        if (agent == null)
-            agent = gameObject.AddComponent<NavMeshAgent>();
+        if (gameObject.GetComponent<NavMeshAgent>() == null)
+            gameObject.AddComponent<NavMeshAgent>();
     }
 
     void OnValidate()
     {
-#if UNITY_EDITOR
         var agent = gameObject.GetComponent<NavMeshAgent>();
 
         agent.radius = monsterParams.radius;
@@ -29,6 +28,7 @@ public class MonsterComponent : MonoBehaviour {
         agent.autoBraking = false;
 
         agent.avoidancePriority = monsterParams.avoidancePriority;
-#endif
+
+        health = monsterParams.health;
     }
 }

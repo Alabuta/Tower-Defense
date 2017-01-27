@@ -11,13 +11,13 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 5832b666554496c4a811329a9caa168d, type: 3}
   m_Name: FastMonsterParams
   m_EditorClassIdentifier: 
-  health: 20
-  radius: 0.8
+  health: 30
+  radius: 0.5
   speed: 6
-  acceleration: 4
-  angularSpeed: 100
+  acceleration: 14
+  angularSpeed: 500
   damage: 4
-  attackDistance: 1.2
+  attackRadius: 0
   chanceToSpawn: 0.25
   rewardForKilling: 50
-  avoidancePriority: 10
+  avoidancePriority: 99
