@@ -1,28 +1,30 @@
-﻿using System.Collections.Generic;
+﻿using System.Collections;
+using System.Collections.Generic;
 
 using UnityEngine;
 using NavMeshAgent = UnityEngine.AI.NavMeshAgent;
 
+[RequireComponent(typeof(GameSystem))]
 public class MonstersSystem : MonoBehaviour {
 
-    Vector3 respawnPosition, finishPosition;
-
     List<GameObject> monstersPrefabs;
+    WaitForSeconds spawnDuration;
 
-    const int kMONSTERS_MAX = 10;
-    int monstersCount = 0;
+    int spawnedMonstersCount;
 
     void Start()
     {
-        respawnPosition = GameObject.FindWithTag("Respawn").transform.position;
-        finishPosition = GameObject.FindWithTag("Finish").transform.position;
-
         monstersPrefabs = new List<GameObject>();
 
         var prefabs = Resources.LoadAll<GameObject>("Prefabs/Monsters");
 
         foreach (var prefab in prefabs) {
             if (prefab.GetComponent<MonsterComponent>() != null) {
+                if (prefab.GetComponent<SphereCollider>() == null) {
+                    Debug.LogError("Prefab has 'MonsterComponent', but doesn't have 'SphereCollider'.");
+                    continue;
+                }
+
                 if (prefab.GetComponent<NavMeshAgent>() == null) {
                     Debug.LogError("Prefab has 'MonsterComponent', but doesn't have 'NavMeshAgent'.");
                     continue;
@@ -32,25 +34,67 @@ public class MonstersSystem : MonoBehaviour {
             }
         }
 
-        InvokeRepeating("AddMonster", 2.0f, 2.0f);
+        monstersPrefabs.Sort(delegate (GameObject a, GameObject b)
+        {
+            var x = a.GetComponent<MonsterComponent>().monsterParams.chanceToSpawn;
+            var y = b.GetComponent<MonsterComponent>().monsterParams.chanceToSpawn;
+
+            if (x < y)
+                return 1;
+
+            else if (x > y)
+                return -1;
+
+            else
+                return 0;
+        });
+
+        var pubSubHub = GetComponent<PubSubHub>();
+
+        if (pubSubHub == null) {
+            Debug.LogAssertion("Publisher-Subscriber Hub server wasn't found.");
+            Application.Quit();
+        }
+
+        pubSubHub.Subscribe<GameSystem.ProjectileHasHitMonsterMessage>(this, ApplyHitDamageToMonster);
     }
 
-    void AddMonster()
+    public void StartSpawnMonsters(Vector3 respawnPosition, Vector3 finishPosition, int monstersMaxCount, float rateOfSpawn)
     {
-        //foreach (var monstersPrefab in monstersPrefabs)
-        InstantiateMonster(monstersPrefabs[0], respawnPosition, Quaternion.identity);
+        spawnedMonstersCount = 0;
 
-        if (monstersCount >= kMONSTERS_MAX)
-            CancelInvoke();
+        GetComponent<GameSystem>().aliveMonstersCount = 0;
+
+        StartCoroutine(SpawnMonsters(respawnPosition, finishPosition, monstersMaxCount, rateOfSpawn));
     }
 
-    void InstantiateMonster(GameObject prefab, Vector3 position, Quaternion rotation)
+    IEnumerator SpawnMonsters(Vector3 respawnPosition, Vector3 finishPosition, int monstersMaxCount, float rateOfSpawn)
     {
-        var monster = Instantiate<GameObject>(prefab, position, rotation);
+        spawnDuration = new WaitForSeconds(rateOfSpawn);
+
+        while (true) {
+            if (SpawnMonster(respawnPosition, finishPosition)) {
+                ++GetComponent<GameSystem>().aliveMonstersCount;
+                ++spawnedMonstersCount;
+            }
+
+            if (spawnedMonstersCount >= monstersMaxCount)
+                yield break;
+
+            yield return spawnDuration;
+        }
+    }
+
+    bool SpawnMonster(Vector3 respawnPosition, Vector3 finishPosition)
+    {
+        var index = Mathf.RoundToInt((monstersPrefabs.Count - 1) * Mathf.Pow(Random.value, 2.0f));
+        index = Mathf.Clamp(index, 0, monstersPrefabs.Count - 1);
+
+        var monster = Instantiate<GameObject>(monstersPrefabs[index], respawnPosition, Quaternion.identity);
 
         if (monster == null) {
-            Debug.LogAssertion("Can't instantiate prefab.");
-            return;
+            Debug.LogError("Can't instantiate prefab.");
+            return false;
         }
 
         try {
@@ -58,15 +102,25 @@ public class MonstersSystem : MonoBehaviour {
         }
 
         catch {
-            Debug.LogAssertion("Can't set agent destination.");
+            Debug.LogError("Can't set agent destination.");
             DestroyImmediate(monster);
-            return;
+            return false;
         }
 
-        ++monstersCount;
+        return true;
     }
 
-    void KillMonster()
+    void ApplyHitDamageToMonster(GameSystem.ProjectileHasHitMonsterMessage message)
     {
+        var monsterComponent = message.monster.GetComponent<MonsterComponent>();
+
+        monsterComponent.health -= message.hitDamage;
+
+        if (monsterComponent.health < 1) {
+            DestroyObject(message.monster);
+            --GetComponent<GameSystem>().aliveMonstersCount;
+
+            GetComponent<GameSystem>().money += monsterComponent.monsterParams.rewardForKilling;
+        }
     }
 }
