@@ -5,12 +5,16 @@ using UnityEngine;
 using NavMeshAgent = UnityEngine.AI.NavMeshAgent;
 
 [RequireComponent(typeof(GameSystem))]
-public class MonstersSystem : MonoBehaviour {
+public sealed class MonstersSystem : MonoBehaviour {
 
-    List<GameObject> monstersPrefabs;
-    WaitForSeconds spawnDuration;
+    internal List<GameObject> monstersPrefabs;
+    internal WaitForSeconds spawnDuration;
 
-    int spawnedMonstersCount;
+    internal int spawnedMonstersCount;
+
+    public int aliveMonstersCount {
+        get; private set;
+    }
 
     void Start()
     {
@@ -57,13 +61,26 @@ public class MonstersSystem : MonoBehaviour {
         }
 
         pubSubHub.Subscribe<GameSystem.ProjectileHasHitMonsterMessage>(this, ApplyHitDamageToMonster);
+
+        var finishObject = GameObject.FindWithTag("Finish");
+
+        try {
+            finishObject.GetComponent<OnTriggerEnterExitEventRaiser>().onEnter.AddListener(GameObjectHasReachedFinish);
+        }
+
+        catch {
+            finishObject.AddComponent<OnTriggerEnterExitEventRaiser>().onEnter.AddListener(GameObjectHasReachedFinish);
+        }
+
+        finally {
+            finishObject.GetComponent<Rigidbody>().isKinematic = true;
+        }
     }
 
     public void StartSpawnMonsters(Vector3 respawnPosition, Vector3 finishPosition, int monstersMaxCount, float rateOfSpawn)
     {
         spawnedMonstersCount = 0;
-
-        GetComponent<GameSystem>().aliveMonstersCount = 0;
+        aliveMonstersCount = 0;
 
         StartCoroutine(SpawnMonsters(respawnPosition, finishPosition, monstersMaxCount, rateOfSpawn));
     }
@@ -74,7 +91,7 @@ public class MonstersSystem : MonoBehaviour {
 
         while (true) {
             if (SpawnMonster(respawnPosition, finishPosition)) {
-                ++GetComponent<GameSystem>().aliveMonstersCount;
+                ++aliveMonstersCount;
                 ++spawnedMonstersCount;
             }
 
@@ -118,9 +135,20 @@ public class MonstersSystem : MonoBehaviour {
 
         if (monsterComponent.health < 1) {
             DestroyObject(message.monster);
-            --GetComponent<GameSystem>().aliveMonstersCount;
+            --aliveMonstersCount;
 
-            GetComponent<GameSystem>().money += monsterComponent.monsterParams.rewardForKilling;
+            GetComponent<GameSystem>().AddMoney(monsterComponent.monsterParams.rewardForKilling);
+        }
+    }
+
+    void GameObjectHasReachedFinish(GameObject subject, Collider other)
+    {
+        if (other.tag == "Monster") {
+            GetComponent<GameSystem>().ApplyDamageToPlayer(other.GetComponent<MonsterComponent>().monsterParams.damage);
+
+            --aliveMonstersCount;
+
+            DestroyObject(other.gameObject);
         }
     }
 }

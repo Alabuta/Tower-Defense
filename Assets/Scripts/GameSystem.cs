@@ -1,18 +1,27 @@
 ﻿using UnityEngine;
 using UnityEngine.UI;
+using System.Collections;
 
 [RequireComponent(typeof(PubSubHub), typeof(MonstersSystem), typeof(TowersSystem))]
-public class GameSystem : MonoBehaviour {
+public sealed class GameSystem : MonoBehaviour {
 
     [Header("Player Settings"), Range(50, 500)]
     public int healthOnStart = 100;
 
-    [Range(10, 100)]
+    [Range(10, 500)]
     public int moneyOnStart = 100;
+
+    [Range(0, 31)]
+    public int layerGround = 0;
 
     [Header("Monster System Settings")]
     public string tagMonster = "Monster";
+
+    [Range(0, 31)]
     public int layerMonster = 0;
+
+    [Range(1, 10)]
+    public int wavesNumber = 4;
 
     [Range(10, 100)]
     public int monstersMaxCount = 24;
@@ -22,17 +31,17 @@ public class GameSystem : MonoBehaviour {
 
     [Header("Tower System Settings")]
     public string tagTower = "Tower";
+
+    [Range(0, 31)]
     public int layerTower = 0;
 
-    [HideInInspector]
-    public int health, money;
+    internal int health, money, waveNumber;
 
-    [HideInInspector]
-    public int aliveMonstersCount;
+    internal Vector3 respawnPosition, finishPosition;
 
-    Vector3 respawnPosition, finishPosition;
-
-    Button btnStartWave;
+    internal Button btnStartWave;
+    internal Text textHealthValue, textMoneyValue;
+    internal Text textYouWin, textYouLose;
 
     public class ProjectileHasHitMonsterMessage {
         public GameObject monster {
@@ -63,23 +72,13 @@ public class GameSystem : MonoBehaviour {
         health = healthOnStart;
         money = moneyOnStart;
 
+        waveNumber = 0;
+
         var respawnObject = GameObject.FindWithTag("Respawn");
         respawnPosition = respawnObject.transform.position;
 
         var finishObject = GameObject.FindWithTag("Finish");
         finishPosition = finishObject.transform.position;
-
-        try {
-            finishObject.GetComponent<OnTriggerEnterExitEventRaiser>().onEnter.AddListener(GameObjectHasReachedFinish);
-        }
-
-        catch {
-            finishObject.AddComponent<OnTriggerEnterExitEventRaiser>().onEnter.AddListener(GameObjectHasReachedFinish);
-        }
-
-        finally {
-            finishObject.GetComponent<Rigidbody>().isKinematic = true;
-        }
 
         InitUI();
     }
@@ -87,18 +86,31 @@ public class GameSystem : MonoBehaviour {
     void InitUI()
     {
         try {
-            btnStartWave = GameObject.Find("btnStartWave").GetComponent<Button>();
+            var canvas = GameObject.Find("Canvas").transform;
 
-            btnStartWave.onClick.AddListener(delegate
-            {
-                StartNewWave();
-            });
+            textHealthValue = GameObject.Find("textHealthValue").GetComponent<Text>();
+            textHealthValue.text = health.ToString();
+
+            textMoneyValue = GameObject.Find("textMoneyValue").GetComponent<Text>();
+            textMoneyValue.text = money.ToString();
+
+            textYouWin = canvas.FindChild("textYouWin").GetComponent<Text>();
+            textYouWin.enabled = false;
+
+            textYouLose = canvas.FindChild("textYouLose").GetComponent<Text>();
+            textYouLose.enabled = false;
+
+            btnStartWave = canvas.FindChild("btnStartWave").GetComponent<Button>();
+
+            btnStartWave.onClick.AddListener(StartNewWave);
 
             btnStartWave.GetComponent<Button>().interactable = true;
 
-            GameObject.Find("btnExit").GetComponent<Button>().onClick.AddListener(delegate
+            canvas.FindChild("btnExit").GetComponent<Button>().onClick.AddListener(Application.Quit);
+
+            GameObject.Find("btnTower_#1").GetComponent<Button>().onClick.AddListener(delegate
             {
-                Application.Quit();
+                GetComponent<TowersSystem>().SetTower(1);
             });
         }
 
@@ -110,6 +122,11 @@ public class GameSystem : MonoBehaviour {
 
     void StartNewWave()
     {
+        textYouWin.enabled = false;
+        textYouLose.enabled = false;
+
+        ++waveNumber;
+
         btnStartWave.GetComponent<Button>().interactable = false;
 
         GetComponent<MonstersSystem>().StartSpawnMonsters(respawnPosition, finishPosition, monstersMaxCount, rateOfSpawn);
@@ -121,22 +138,38 @@ public class GameSystem : MonoBehaviour {
         btnStartWave.GetComponent<Button>().interactable = true;
 
         GetComponent<TowersSystem>().HoldFire();
+
+        if (waveNumber >= wavesNumber)
+            textYouWin.enabled = true;
     }
 
     void FixedUpdate()
     {
-        if (aliveMonstersCount < 1)
+        if (GetComponent<MonstersSystem>().aliveMonstersCount < 1)
             WavePassed();
     }
 
-    void GameObjectHasReachedFinish(GameObject subject, Collider other)
+    public void ApplyDamageToPlayer(int damage)
     {
-        if (other.tag == tagMonster) {
-            health -= other.GetComponent<MonsterComponent>().monsterParams.damage;
+        health = Mathf.Clamp(health - damage, 0, healthOnStart);
 
-            --aliveMonstersCount;
-
-            DestroyObject(other.gameObject);
+        if (health < 1) {
+            textYouLose.enabled = true;
+            GetComponent<TowersSystem>().HoldFire();
         }
+
+        textHealthValue.text = health.ToString();
+    }
+
+    public void AddMoney(int amount)
+    {
+        money += amount;
+        textMoneyValue.text = money.ToString();
+    }
+
+    public void SpendMoney(int amount)
+    {
+        money -= amount;
+        textMoneyValue.text = money.ToString();
     }
 }

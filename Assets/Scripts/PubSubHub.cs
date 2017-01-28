@@ -5,7 +5,7 @@ using System.Collections.Generic;
 using UnityEngine;
 
 [RequireComponent(typeof(GameSystem))]
-public class PubSubHub : MonoBehaviour {
+public sealed class PubSubHub : MonoBehaviour {
 
     internal class Handler {
         public Delegate action {
