@@ -1,7 +1,7 @@
 ﻿using UnityEngine;
 
 [CreateAssetMenu(fileName = "NewTowerParams", menuName = "New Type Of Tower", order = 2)]
-public class TowerParams : ScriptableObject {
+public sealed class TowerParams : ScriptableObject {
 
     [Header("Attack Settings"), Range(1, 100)]
     public int hitDamage;
