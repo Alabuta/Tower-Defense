@@ -16,8 +16,8 @@ MonoBehaviour:
   speed: 3.6
   acceleration: 4
   angularSpeed: 250
-  damage: 1
+  damage: 5
   attackRadius: 0
   chanceToSpawn: 0.64
-  rewardForKilling: 20
+  rewardForKilling: 5
   avoidancePriority: 50

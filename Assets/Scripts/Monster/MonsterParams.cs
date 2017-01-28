@@ -1,7 +1,7 @@
 ﻿using UnityEngine;
 
 [CreateAssetMenu(fileName = "NewMonsterParams", menuName = "New Type Of Monster", order = 1)]
-public class MonsterParams : ScriptableObject {
+public sealed class MonsterParams : ScriptableObject {
 
     [Header("Health Settings"), Range(1, 100)]
     public int health;
@@ -18,7 +18,7 @@ public class MonsterParams : ScriptableObject {
     [Range(1, 1000)]
     public float angularSpeed;
 
-    [Header("Attack Settings"), Range(1, 10)]
+    [Header("Attack Settings"), Range(1, 100)]
     public int damage;
 
     [Range(1, 2)]
