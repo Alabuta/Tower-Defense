@@ -6,34 +6,56 @@ using UnityEngine;
 [RequireComponent(typeof(GameSystem))]
 public sealed class TowersSystem : MonoBehaviour {
 
-    internal List<GameObject> towersPrefabs;
-    internal List<GameObject> towers;
+    internal List<TowerComponent> towersPrefabs;
+    internal List<TowerComponent> towers;
 
     internal GameObject projectilePrefab;
 
+    // Used in looking place for tower case.
     internal GameObject spawnZoneIsValid, spawnZoneIsInvalid;
 
     internal bool keepShooting;
 
     public void Start()
     {
-        towersPrefabs = new List<GameObject>();
-        towers = new List<GameObject>();
+        towersPrefabs = new List<TowerComponent>();
+        towers = new List<TowerComponent>();
         keepShooting = false;
 
         var towerPrefabs = Resources.LoadAll<GameObject>("Prefabs/Towers");
 
         foreach (var prefab in towerPrefabs)
             if (prefab.GetComponent<TowerComponent>() != null)
-                towersPrefabs.Add(prefab);
+                towersPrefabs.Add(prefab.GetComponent<TowerComponent>());
+
+        towersPrefabs.Sort(delegate (TowerComponent a, TowerComponent b)
+        {
+            var x = a.towerParams.price;
+            var y = b.towerParams.price;
+
+            if (x > y)
+                return 1;
+
+            else if (x < y)
+                return -1;
+
+            else
+                return 0;
+        });
 
         projectilePrefab = Resources.Load<GameObject>("Prefabs/Projectile");
 
+        if (projectilePrefab == null) {
+            Debug.LogAssertion("'Projectile' prefab doesn't exist.");
+            Application.Quit();
+        }
+
+        // Valid - green, invalid - red circles.
         var spawnZoneIsValidPrefab = Resources.Load<GameObject>("Prefabs/spawnZoneIsValid");
         var spawnZoneIsInvalidPrefab = Resources.Load<GameObject>("Prefabs/spawnZoneIsInvalid");
 
         if (spawnZoneIsValidPrefab == null || spawnZoneIsInvalidPrefab == null) {
-            Debug.LogAssertion("'Spawn Zone' prefabs are invalid.");
+            Debug.LogAssertion("'Spawn Zone' prefabs don't exist.");
             Application.Quit();
         }
 
@@ -49,6 +71,11 @@ public sealed class TowersSystem : MonoBehaviour {
         spawnZoneIsInvalid.SetActive(false);
     }
 
+    public List<TowerComponent> GetAllTowerPrefabs()
+    {
+        return towersPrefabs;
+    }
+
     void SetTower(int number)
     {
         var index = Mathf.Clamp(number, 0, towersPrefabs.Count - 1);
@@ -56,16 +83,18 @@ public sealed class TowersSystem : MonoBehaviour {
         StartCoroutine(FindPlaceForTower(towersPrefabs[index]));
     }
 
-    void InstantiateTowerPrefab(GameObject towerPrefab, Vector3 position)
+    void InstantiateTowerPrefab(TowerComponent towerPrefab, Vector3 position)
     {
-        var tower = Instantiate<GameObject>(towerPrefab, position, Quaternion.identity);
+        var tower = Instantiate<TowerComponent>(towerPrefab, position, Quaternion.identity);
         towers.Add(tower);
 
         if (keepShooting)
-            StartCoroutine(StartShooting(tower.GetComponent<TowerComponent>(), Instantiate<GameObject>(projectilePrefab)));
+            StartCoroutine(StartShooting(tower, Instantiate<GameObject>(projectilePrefab)));
+
+        SendMessage("SpendMoney", tower.towerParams.price, SendMessageOptions.RequireReceiver);
     }
 
-    IEnumerator FindPlaceForTower(GameObject towerPrefab)
+    IEnumerator FindPlaceForTower(TowerComponent towerPrefab)
     {
         var results = new RaycastHit[1];
         var neighbours = new Collider[1];
@@ -77,14 +106,14 @@ public sealed class TowersSystem : MonoBehaviour {
         var extents = towerPrefab.GetComponent<MeshRenderer>().bounds.extents;
         var max = Mathf.Max(extents.x, extents.z);
 
-        var radius = towerPrefab.GetComponent<TowerComponent>().towerParams.attackRadius;
+        var radius = towerPrefab.towerParams.attackRadius;
 
         spawnZoneIsValid.transform.localScale = new Vector3(radius, spawnZoneIsValid.transform.localScale.y / 2, radius) * 2;
         spawnZoneIsInvalid.transform.localScale = new Vector3(radius, spawnZoneIsValid.transform.localScale.y / 2, radius) * 2;
 
-        var tower = Instantiate<GameObject>(towerPrefab);
+        var tower = Instantiate<TowerComponent>(towerPrefab);
         Destroy(tower.GetComponent<Collider>());
-        tower.SetActive(false);
+        tower.gameObject.SetActive(false);
 
         var isFit = false;
 
@@ -119,13 +148,13 @@ public sealed class TowersSystem : MonoBehaviour {
                 spawnZoneIsInvalid.SetActive(false);
             }
 
-            tower.SetActive(amount == 1);
+            tower.gameObject.SetActive(amount == 1);
 
             if (Input.GetMouseButtonDown(0)) {//Input.GetButtonDown("Fire")
                 spawnZoneIsValid.SetActive(false);
                 spawnZoneIsInvalid.SetActive(false);
 
-                DestroyObject(tower);
+                DestroyObject(tower.gameObject);
 
                 if (isFit)
                     InstantiateTowerPrefab(towerPrefab, results[0].point + new Vector3(0, extents.y, 0));
@@ -142,7 +171,7 @@ public sealed class TowersSystem : MonoBehaviour {
         keepShooting = true;
 
         foreach (var tower in towers)
-            StartCoroutine(StartShooting(tower.GetComponent<TowerComponent>(), Instantiate<GameObject>(projectilePrefab)));
+            StartCoroutine(StartShooting(tower, Instantiate<GameObject>(projectilePrefab)));
     }
 
     void HoldFire()

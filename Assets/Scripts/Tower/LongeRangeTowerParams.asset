@@ -11,6 +11,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: eca37bf81ddf2c74e98d247dcd5bd6b1, type: 3}
   m_Name: LongeRangeTowerParams
   m_EditorClassIdentifier: 
+  towerName: Long range tower
+  towerDescription: Maximum attack radius. Medium hit damage.
   hitDamage: 30
   attackRadius: 6
   fireRate: 1

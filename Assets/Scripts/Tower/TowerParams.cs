@@ -3,6 +3,11 @@
 [CreateAssetMenu(fileName = "NewTowerParams", menuName = "New Type Of Tower", order = 2)]
 public sealed class TowerParams : ScriptableObject {
 
+    public string towerName;
+
+    [TextArea]
+    public string towerDescription;
+
     [Header("Attack Settings"), Range(1, 100)]
     public int hitDamage;
 

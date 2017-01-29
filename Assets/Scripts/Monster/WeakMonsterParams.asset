@@ -13,8 +13,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   health: 25
   radius: 0.5
-  speed: 3.6
-  acceleration: 4
+  speed: 4
+  acceleration: 3.2
   angularSpeed: 250
   damage: 5
   attackRadius: 0

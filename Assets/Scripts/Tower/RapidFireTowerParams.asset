@@ -11,6 +11,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: eca37bf81ddf2c74e98d247dcd5bd6b1, type: 3}
   m_Name: RapidFireTowerParams
   m_EditorClassIdentifier: 
+  towerName: Rapid fire tower
+  towerDescription: Medium attack radius. Small hit damage.
   hitDamage: 10
   attackRadius: 4
   fireRate: 0.25

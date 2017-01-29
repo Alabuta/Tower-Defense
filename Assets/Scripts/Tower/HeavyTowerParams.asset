@@ -11,6 +11,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: eca37bf81ddf2c74e98d247dcd5bd6b1, type: 3}
   m_Name: HeavyTowerParams
   m_EditorClassIdentifier: 
+  towerName: Heavy tower
+  towerDescription: Minimum attack radius. Maximum hit damage.
   hitDamage: 50
   attackRadius: 4
   fireRate: 2
