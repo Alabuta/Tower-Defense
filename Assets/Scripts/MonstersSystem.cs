@@ -8,7 +8,7 @@ using NavMeshAgent = UnityEngine.AI.NavMeshAgent;
 [RequireComponent(typeof(GameSystem))]
 public sealed class MonstersSystem : MonoBehaviour {
 
-    internal List<GameObject> monstersPrefabs;
+    internal List<MonsterComponent> monstersPrefabs;
     internal WaitForSeconds spawnDuration;
 
     internal int spawnedMonstersCount;
@@ -18,6 +18,8 @@ public sealed class MonstersSystem : MonoBehaviour {
         get; private set;
     }
 
+    // Message class for applying damage to a monster.
+    // Receives from 'TowerSystem' subsystem.
     public class ProjectileHasHitMonsterMessage {
         public GameObject monster {
             get; set;
@@ -30,10 +32,11 @@ public sealed class MonstersSystem : MonoBehaviour {
 
     void Start()
     {
-        monstersPrefabs = new List<GameObject>();
+        monstersPrefabs = new List<MonsterComponent>();
 
         var prefabs = Resources.LoadAll<GameObject>("Prefabs/Monsters");
 
+        // Creating monsters' prefabs collection.
         foreach (var prefab in prefabs) {
             if (prefab.GetComponent<MonsterComponent>() != null) {
                 if (prefab.GetComponent<SphereCollider>() == null) {
@@ -46,14 +49,14 @@ public sealed class MonstersSystem : MonoBehaviour {
                     continue;
                 }
 
-                monstersPrefabs.Add(prefab);
+                monstersPrefabs.Add(prefab.GetComponent<MonsterComponent>());
             }
         }
 
-        monstersPrefabs.Sort(delegate (GameObject a, GameObject b)
+        monstersPrefabs.Sort(delegate (MonsterComponent a, MonsterComponent b)
         {
-            var x = a.GetComponent<MonsterComponent>().monsterParams.chanceToSpawn;
-            var y = b.GetComponent<MonsterComponent>().monsterParams.chanceToSpawn;
+            var x = a.monsterParams.chanceToSpawn;
+            var y = b.monsterParams.chanceToSpawn;
 
             if (x < y)
                 return 1;
@@ -64,11 +67,6 @@ public sealed class MonstersSystem : MonoBehaviour {
             else
                 return 0;
         });
-    }
-
-    public List<GameObject> GetAllTowerPrefabs()
-    {
-        return monstersPrefabs;
     }
 
     public void StartSpawnMonsters(Vector3 respawnPosition, Vector3 finishPosition, int monstersMaxCount, float rateOfSpawn)
@@ -105,20 +103,18 @@ public sealed class MonstersSystem : MonoBehaviour {
         var index = Mathf.RoundToInt((monstersPrefabs.Count - 1) * Mathf.Pow(Random.value, 2.0f));
         index = Mathf.Clamp(index, 0, monstersPrefabs.Count - 1);
 
-        var monster = Instantiate<GameObject>(monstersPrefabs[index], respawnPosition, Quaternion.identity);
+        var monster = Instantiate<MonsterComponent>(monstersPrefabs[index], respawnPosition, Quaternion.identity);
 
         if (monster == null) {
             Debug.LogError("Can't instantiate prefab.");
             return false;
         }
 
-        try {
-            monster.GetComponent<NavMeshAgent>().SetDestination(finishPosition);
-        }
+        var successful = monster.GetComponent<NavMeshAgent>().SetDestination(finishPosition);
 
-        catch {
+        if (!successful) {
             Debug.LogError("Can't set agent destination.");
-            DestroyImmediate(monster);
+            DestroyImmediate(monster.gameObject);
             return false;
         }
 
@@ -132,11 +128,13 @@ public sealed class MonstersSystem : MonoBehaviour {
         monsterComponent.health -= message.hitDamage;
 
         if (monsterComponent.health < 1) {
-            DestroyImmediate(message.monster);
+            DestroyImmediate(message.monster.gameObject);
 
             SendMessage("MonsterHasBeenKilled", monsterComponent.monsterParams.rewardForKilling, SendMessageOptions.RequireReceiver);
 
-            if (--aliveMonstersCount < 1 && spawnedMonstersCount >= monstersMaxCount)
+            --aliveMonstersCount;
+
+            if (aliveMonstersCount < 1 && spawnedMonstersCount >= monstersMaxCount)
                 SendMessage("AllMonstersHaveDied", SendMessageOptions.RequireReceiver);
         }
     }
@@ -158,7 +156,9 @@ public sealed class MonstersSystem : MonoBehaviour {
 
                 DestroyImmediate(monsters[i].gameObject);
 
-                if (--aliveMonstersCount < 1 && spawnedMonstersCount >= monstersMaxCount)
+                --aliveMonstersCount;
+
+                if (aliveMonstersCount < 1 && spawnedMonstersCount >= monstersMaxCount)
                     SendMessage("AllMonstersHaveDied", SendMessageOptions.RequireReceiver);
             }
 

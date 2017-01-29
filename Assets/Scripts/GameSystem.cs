@@ -1,4 +1,7 @@
-﻿using UnityEngine;
+﻿using System.Collections;
+using System.Collections.Generic;
+
+using UnityEngine;
 using UnityEngine.UI;
 
 [RequireComponent(typeof(MonstersSystem), typeof(TowersSystem))]
@@ -40,16 +43,22 @@ public sealed class GameSystem : MonoBehaviour {
     internal Text textHealthValue, textMoneyValue, textWavesCurrentValue;
     internal Text textYouWin, textYouLose;
 
+    internal List<Button> btnTowerInStore;
+
     void Reset()
     {
+        // Warning message for duplicate instances of the script.
         if (FindObjectsOfType<GameSystem>().Length > 1) {
             Debug.LogWarning("'Game' component is already instantiated.");
             enabled = false;
         }
     }
 
-    void Start()
+    IEnumerator Start()
     {
+        // Make sure that subsystems are initialized.
+        yield return new WaitWhile(() => GetComponent<TowersSystem>() == null || GetComponent<MonstersSystem>() == null);
+
         health = healthOnStart;
         money = moneyOnStart;
 
@@ -62,6 +71,7 @@ public sealed class GameSystem : MonoBehaviour {
     void InitUI()
     {
         try {
+            // GUI initialization routine...
             var canvas = GameObject.Find("Canvas").transform;
 
             textHealthValue = GameObject.Find("textHealthValue").GetComponent<Text>();
@@ -98,26 +108,60 @@ public sealed class GameSystem : MonoBehaviour {
 
     void InitTowersStoreUI()
     {
+        var buttonTower = Resources.Load<GameObject>("Prefabs/UI/buttonTower");
+
+        if (buttonTower == null) {
+            Debug.LogAssertion("'buttonTower' UI prefab doesn't exist.");
+            Application.Quit();
+        }
+
         try {
-            GameObject.Find("btnTower_#1").GetComponent<Button>().onClick.AddListener(delegate
-            {
-                SendMessage("SetTower", 0, SendMessageOptions.RequireReceiver);
-            });
+            // Object 'panelTowers' is being used like chart for all towers' prefab buttons.
+            var panelTowers = GameObject.Find("panelTowers").transform;
+            var buttonSize = buttonTower.GetComponent<RectTransform>().sizeDelta;
 
-            GameObject.Find("btnTower_#2").GetComponent<Button>().onClick.AddListener(delegate
-            {
-                SendMessage("SetTower", 1, SendMessageOptions.RequireReceiver);
-            });
+            // All we got from 'TowerSystem' subsytem for towers chart.
+            var towersPrefabs = GetComponent<TowersSystem>().GetAllTowerPrefabs();
 
-            GameObject.Find("btnTower_#3").GetComponent<Button>().onClick.AddListener(delegate
-            {
-                SendMessage("SetTower", 2, SendMessageOptions.RequireReceiver);
-            });
+            // Margin calculations...
+            panelTowers.GetComponent<RectTransform>().sizeDelta = new Vector2(256, 16 + towersPrefabs.Count * (buttonSize.y + 16));
 
-            textWavesCurrentValue = GameObject.Find("textWavesCurrentValue").GetComponent<Text>();
-            textWavesCurrentValue.text = waveNumber.ToString();
+            btnTowerInStore = new List<Button>();
 
-            GameObject.Find("textWavesTotalValue").GetComponent<Text>().text = wavesTotalNumber.ToString();
+            // Passing through all existing towers' prefabs and creating relevant buttons.
+            for (var i = 0; i < towersPrefabs.Count; ++i) {
+                var localIndex = i;
+
+                var towerParams = towersPrefabs[i].towerParams;
+
+                var button = Instantiate<GameObject>(buttonTower, panelTowers).GetComponent<Button>();
+                button.transform.FindChild("Text").GetComponent<Text>().text = towerParams.towerName;
+
+                var buttonRect = button.GetComponent<RectTransform>();
+
+                // Very tricky part, check after changes.
+                buttonRect.localRotation = Quaternion.identity;
+                buttonRect.localScale = Vector3.one;
+                buttonRect.anchorMin = new Vector2(0, 1);
+                buttonRect.anchorMax = new Vector2(1, 1);
+                buttonRect.pivot = new Vector2(0, 1);
+                buttonRect.sizeDelta = new Vector2(-32, 64);
+                buttonRect.anchoredPosition3D = new Vector3(16, -16 - i * (buttonRect.sizeDelta.y + 16));
+
+                var text = button.transform.FindChild("TooltipPanel").FindChild("TooltipText").GetComponent<Text>();
+
+                text.text = towerParams.towerDescription;
+                text.text += "\n\n\tPrice: " + towerParams.price.ToString();
+
+                button.interactable = towerParams.price > money ? false : true;
+
+                button.onClick.AddListener(delegate
+                {
+                    SendMessage("SetTower", localIndex, SendMessageOptions.RequireReceiver);
+                });
+
+                btnTowerInStore.Add(button);
+            }
         }
 
         catch (System.Exception ex) {
@@ -148,7 +192,7 @@ public sealed class GameSystem : MonoBehaviour {
             Application.Quit();
         }
 
-        GetComponent<MonstersSystem>().StartSpawnMonsters(respawnPosition, finishPosition, monstersMaxCount, rateOfSpawn);
+        GetComponent<MonstersSystem>().StartSpawnMonsters(respawnPosition, finishPosition, Mathf.RoundToInt(monstersMaxCount * Mathf.Sqrt(waveNumber)), rateOfSpawn / Mathf.Sqrt(waveNumber));
         SendMessage("StartShooting", SendMessageOptions.RequireReceiver);
     }
 
@@ -188,11 +232,33 @@ public sealed class GameSystem : MonoBehaviour {
     {
         money = Mathf.Clamp(money - amount, 0, money);
         textMoneyValue.text = money.ToString();
+
+        CheckTowerStoreUI();
     }
 
     void MonsterHasBeenKilled(int rewardForKilling)
     {
         money = Mathf.Clamp(money + rewardForKilling, money, int.MaxValue);
         textMoneyValue.text = money.ToString();
+
+        CheckTowerStoreUI();
+    }
+
+    void CheckTowerStoreUI()
+    {
+        var text = "";
+        var towersPrefabs = GetComponent<TowersSystem>().GetAllTowerPrefabs();
+
+        TowerComponent prefab = null;
+
+        // If player has enough money for buying a tower - make it available in towers chart.
+        foreach (var button in btnTowerInStore) {
+            text = button.transform.FindChild("Text").GetComponent<Text>().text;
+
+            prefab = towersPrefabs.Find(a => a.towerParams.towerName == text ? true : false);
+
+            if (prefab != null)
+                button.interactable = prefab.towerParams.price > money ? false : true;
+        }
     }
 }
