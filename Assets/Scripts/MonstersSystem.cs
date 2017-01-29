@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 
 using UnityEngine;
+using UnityEngine.UI;
 using NavMeshAgent = UnityEngine.AI.NavMeshAgent;
 
 [RequireComponent(typeof(GameSystem))]
@@ -11,9 +12,20 @@ public sealed class MonstersSystem : MonoBehaviour {
     internal WaitForSeconds spawnDuration;
 
     internal int spawnedMonstersCount;
+    internal int monstersMaxCount;
 
     public int aliveMonstersCount {
         get; private set;
+    }
+
+    public class ProjectileHasHitMonsterMessage {
+        public GameObject monster {
+            get; set;
+        }
+
+        public int hitDamage {
+            get; set;
+        }
     }
 
     void Start()
@@ -52,35 +64,21 @@ public sealed class MonstersSystem : MonoBehaviour {
             else
                 return 0;
         });
+    }
 
-        var pubSubHub = GetComponent<PubSubHub>();
-
-        if (pubSubHub == null) {
-            Debug.LogAssertion("Publisher-Subscriber Hub server wasn't found.");
-            Application.Quit();
-        }
-
-        pubSubHub.Subscribe<GameSystem.ProjectileHasHitMonsterMessage>(this, ApplyHitDamageToMonster);
-
-        var finishObject = GameObject.FindWithTag("Finish");
-
-        try {
-            finishObject.GetComponent<OnTriggerEnterExitEventRaiser>().onEnter.AddListener(GameObjectHasReachedFinish);
-        }
-
-        catch {
-            finishObject.AddComponent<OnTriggerEnterExitEventRaiser>().onEnter.AddListener(GameObjectHasReachedFinish);
-        }
-
-        finally {
-            finishObject.GetComponent<Rigidbody>().isKinematic = true;
-        }
+    public List<GameObject> GetAllTowerPrefabs()
+    {
+        return monstersPrefabs;
     }
 
     public void StartSpawnMonsters(Vector3 respawnPosition, Vector3 finishPosition, int monstersMaxCount, float rateOfSpawn)
     {
         spawnedMonstersCount = 0;
         aliveMonstersCount = 0;
+
+        this.monstersMaxCount = monstersMaxCount;
+
+        StartCoroutine(CheckWhetherMonsterHadReachedFinish(finishPosition, 0.64f));
 
         StartCoroutine(SpawnMonsters(respawnPosition, finishPosition, monstersMaxCount, rateOfSpawn));
     }
@@ -127,28 +125,44 @@ public sealed class MonstersSystem : MonoBehaviour {
         return true;
     }
 
-    void ApplyHitDamageToMonster(GameSystem.ProjectileHasHitMonsterMessage message)
+    void ApplyDamageToMonster(ProjectileHasHitMonsterMessage message)
     {
         var monsterComponent = message.monster.GetComponent<MonsterComponent>();
 
         monsterComponent.health -= message.hitDamage;
 
         if (monsterComponent.health < 1) {
-            DestroyObject(message.monster);
-            --aliveMonstersCount;
+            DestroyImmediate(message.monster);
 
-            GetComponent<GameSystem>().AddMoney(monsterComponent.monsterParams.rewardForKilling);
+            SendMessage("MonsterHasBeenKilled", monsterComponent.monsterParams.rewardForKilling, SendMessageOptions.RequireReceiver);
+
+            if (--aliveMonstersCount < 1 && spawnedMonstersCount >= monstersMaxCount)
+                SendMessage("AllMonstersHaveDied", SendMessageOptions.RequireReceiver);
         }
     }
 
-    void GameObjectHasReachedFinish(GameObject subject, Collider other)
+    IEnumerator CheckWhetherMonsterHadReachedFinish(Vector3 position, float contactRadius)
     {
-        if (other.tag == "Monster") {
-            GetComponent<GameSystem>().ApplyDamageToPlayer(other.GetComponent<MonsterComponent>().monsterParams.damage);
+        var monsters = new Collider[20];
+        var monstersHadReachedFinishAmount = 0;
 
-            --aliveMonstersCount;
+        var iterationStep = new WaitForFixedUpdate();
 
-            DestroyObject(other.gameObject);
+        var layerMask = 1 << GetComponent<GameSystem>().layerMonster;
+
+        while (true) {
+            monstersHadReachedFinishAmount = Physics.OverlapSphereNonAlloc(position, contactRadius, monsters, layerMask);
+
+            for (var i = 0; i < monstersHadReachedFinishAmount; ++i) {
+                SendMessage("ApplyDamageToPlayer", monsters[i].GetComponent<MonsterComponent>().monsterParams.damage, SendMessageOptions.RequireReceiver);
+
+                DestroyImmediate(monsters[i].gameObject);
+
+                if (--aliveMonstersCount < 1 && spawnedMonstersCount >= monstersMaxCount)
+                    SendMessage("AllMonstersHaveDied", SendMessageOptions.RequireReceiver);
+            }
+
+            yield return iterationStep;
         }
     }
 }

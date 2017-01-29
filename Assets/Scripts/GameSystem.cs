@@ -1,8 +1,7 @@
 ﻿using UnityEngine;
 using UnityEngine.UI;
-using System.Collections;
 
-[RequireComponent(typeof(PubSubHub), typeof(MonstersSystem), typeof(TowersSystem))]
+[RequireComponent(typeof(MonstersSystem), typeof(TowersSystem))]
 public sealed class GameSystem : MonoBehaviour {
 
     [Header("Player Settings"), Range(50, 500)]
@@ -21,7 +20,7 @@ public sealed class GameSystem : MonoBehaviour {
     public int layerMonster = 0;
 
     [Range(1, 10)]
-    public int wavesNumber = 4;
+    public int wavesTotalNumber = 4;
 
     [Range(10, 100)]
     public int monstersMaxCount = 24;
@@ -37,27 +36,9 @@ public sealed class GameSystem : MonoBehaviour {
 
     internal int health, money, waveNumber;
 
-    internal Vector3 respawnPosition, finishPosition;
-
     internal Button btnStartWave;
-    internal Text textHealthValue, textMoneyValue;
+    internal Text textHealthValue, textMoneyValue, textWavesCurrentValue;
     internal Text textYouWin, textYouLose;
-
-    public class ProjectileHasHitMonsterMessage {
-        public GameObject monster {
-            get; private set;
-        }
-
-        public int hitDamage {
-            get; private set;
-        }
-
-        public ProjectileHasHitMonsterMessage(GameObject monster, int damage)
-        {
-            this.monster = monster;
-            this.hitDamage = damage;
-        }
-    }
 
     void Reset()
     {
@@ -74,13 +55,8 @@ public sealed class GameSystem : MonoBehaviour {
 
         waveNumber = 0;
 
-        var respawnObject = GameObject.FindWithTag("Respawn");
-        respawnPosition = respawnObject.transform.position;
-
-        var finishObject = GameObject.FindWithTag("Finish");
-        finishPosition = finishObject.transform.position;
-
         InitUI();
+        InitTowersStoreUI();
     }
 
     void InitUI()
@@ -108,10 +84,40 @@ public sealed class GameSystem : MonoBehaviour {
 
             canvas.FindChild("btnExit").GetComponent<Button>().onClick.AddListener(Application.Quit);
 
+            textWavesCurrentValue = GameObject.Find("textWavesCurrentValue").GetComponent<Text>();
+            textWavesCurrentValue.text = waveNumber.ToString();
+
+            GameObject.Find("textWavesTotalValue").GetComponent<Text>().text = wavesTotalNumber.ToString();
+        }
+
+        catch (System.Exception ex) {
+            Debug.LogAssertion("Can't reach one of UI objects. " + ex.ToString(), transform);
+            Application.Quit();
+        }
+    }
+
+    void InitTowersStoreUI()
+    {
+        try {
             GameObject.Find("btnTower_#1").GetComponent<Button>().onClick.AddListener(delegate
             {
-                GetComponent<TowersSystem>().SetTower(1);
+                SendMessage("SetTower", 0, SendMessageOptions.RequireReceiver);
             });
+
+            GameObject.Find("btnTower_#2").GetComponent<Button>().onClick.AddListener(delegate
+            {
+                SendMessage("SetTower", 1, SendMessageOptions.RequireReceiver);
+            });
+
+            GameObject.Find("btnTower_#3").GetComponent<Button>().onClick.AddListener(delegate
+            {
+                SendMessage("SetTower", 2, SendMessageOptions.RequireReceiver);
+            });
+
+            textWavesCurrentValue = GameObject.Find("textWavesCurrentValue").GetComponent<Text>();
+            textWavesCurrentValue.text = waveNumber.ToString();
+
+            GameObject.Find("textWavesTotalValue").GetComponent<Text>().text = wavesTotalNumber.ToString();
         }
 
         catch (System.Exception ex) {
@@ -125,51 +131,68 @@ public sealed class GameSystem : MonoBehaviour {
         textYouWin.enabled = false;
         textYouLose.enabled = false;
 
-        ++waveNumber;
+        textWavesCurrentValue.text = (++waveNumber).ToString();
 
         btnStartWave.GetComponent<Button>().interactable = false;
 
+        var respawnPosition = Vector3.one;
+        var finishPosition = Vector3.one;
+
+        try {
+            respawnPosition = GameObject.FindWithTag("Respawn").transform.position;
+            finishPosition = GameObject.FindWithTag("Finish").transform.position;
+        }
+
+        catch (System.Exception ex) {
+            Debug.LogAssertion("'Finish' or 'Respawn' tagged object is not exist. " + ex.ToString());
+            Application.Quit();
+        }
+
         GetComponent<MonstersSystem>().StartSpawnMonsters(respawnPosition, finishPosition, monstersMaxCount, rateOfSpawn);
-        GetComponent<TowersSystem>().GetReady();
+        SendMessage("StartShooting", SendMessageOptions.RequireReceiver);
     }
 
-    void WavePassed()
+    void AllMonstersHaveDied()
     {
-        btnStartWave.GetComponent<Button>().interactable = true;
+        SendMessage("HoldFire", SendMessageOptions.RequireReceiver);
 
-        GetComponent<TowersSystem>().HoldFire();
+        if (health > 0) {
+            if (waveNumber >= wavesTotalNumber)
+                textYouWin.enabled = true;
 
-        if (waveNumber >= wavesNumber)
-            textYouWin.enabled = true;
+            else
+                btnStartWave.GetComponent<Button>().interactable = true;
+        }
+
+        else
+            textYouLose.enabled = true;
     }
 
-    void FixedUpdate()
+    void GameOver()
     {
-        if (GetComponent<MonstersSystem>().aliveMonstersCount < 1)
-            WavePassed();
+        textYouLose.enabled = true;
+        SendMessage("HoldFire", SendMessageOptions.RequireReceiver);
     }
 
-    public void ApplyDamageToPlayer(int damage)
+    void ApplyDamageToPlayer(int damage)
     {
         health = Mathf.Clamp(health - damage, 0, healthOnStart);
 
-        if (health < 1) {
-            textYouLose.enabled = true;
-            GetComponent<TowersSystem>().HoldFire();
-        }
+        if (health < 1)
+            GameOver();
 
         textHealthValue.text = health.ToString();
     }
 
-    public void AddMoney(int amount)
+    void SpendMoney(int amount)
     {
-        money += amount;
+        money = Mathf.Clamp(money - amount, 0, money);
         textMoneyValue.text = money.ToString();
     }
 
-    public void SpendMoney(int amount)
+    void MonsterHasBeenKilled(int rewardForKilling)
     {
-        money -= amount;
+        money = Mathf.Clamp(money + rewardForKilling, money, int.MaxValue);
         textMoneyValue.text = money.ToString();
     }
 }

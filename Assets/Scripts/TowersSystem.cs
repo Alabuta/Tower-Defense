@@ -11,8 +11,6 @@ public sealed class TowersSystem : MonoBehaviour {
 
     internal GameObject projectilePrefab;
 
-    internal PubSubHub pubSubHub;
-
     internal GameObject spawnZoneIsValid, spawnZoneIsInvalid;
 
     internal bool keepShooting;
@@ -30,16 +28,6 @@ public sealed class TowersSystem : MonoBehaviour {
                 towersPrefabs.Add(prefab);
 
         projectilePrefab = Resources.Load<GameObject>("Prefabs/Projectile");
-
-        foreach (var prefab in towersPrefabs)
-            towers.Add(Instantiate<GameObject>(prefab));
-
-        pubSubHub = GetComponent<PubSubHub>();
-
-        if (pubSubHub == null) {
-            Debug.LogAssertion("Publisher-Subscriber Hub server wasn't found.");
-            Application.Quit();
-        }
 
         var spawnZoneIsValidPrefab = Resources.Load<GameObject>("Prefabs/spawnZoneIsValid");
         var spawnZoneIsInvalidPrefab = Resources.Load<GameObject>("Prefabs/spawnZoneIsInvalid");
@@ -61,12 +49,20 @@ public sealed class TowersSystem : MonoBehaviour {
         spawnZoneIsInvalid.SetActive(false);
     }
 
-    public void SetTower(int number)
+    void SetTower(int number)
     {
         var index = Mathf.Clamp(number, 0, towersPrefabs.Count - 1);
 
-        StopCoroutine(FindPlaceForTower(towersPrefabs[index]));
         StartCoroutine(FindPlaceForTower(towersPrefabs[index]));
+    }
+
+    void InstantiateTowerPrefab(GameObject towerPrefab, Vector3 position)
+    {
+        var tower = Instantiate<GameObject>(towerPrefab, position, Quaternion.identity);
+        towers.Add(tower);
+
+        if (keepShooting)
+            StartCoroutine(StartShooting(tower.GetComponent<TowerComponent>(), Instantiate<GameObject>(projectilePrefab)));
     }
 
     IEnumerator FindPlaceForTower(GameObject towerPrefab)
@@ -86,11 +82,15 @@ public sealed class TowersSystem : MonoBehaviour {
         spawnZoneIsValid.transform.localScale = new Vector3(radius, spawnZoneIsValid.transform.localScale.y / 2, radius) * 2;
         spawnZoneIsInvalid.transform.localScale = new Vector3(radius, spawnZoneIsValid.transform.localScale.y / 2, radius) * 2;
 
+        var tower = Instantiate<GameObject>(towerPrefab);
+        Destroy(tower.GetComponent<Collider>());
+        tower.SetActive(false);
+
         var isFit = false;
 
         while (true) {
             var ray = Camera.main.ScreenPointToRay(Input.mousePosition);
-            var amount = Physics.RaycastNonAlloc(ray, results, 100, layerMask);//, QueryTriggerInteraction.Ignore
+            var amount = Physics.RaycastNonAlloc(ray, results, 100, layerMask);
 
             if (amount == 1) {
                 isFit = Physics.OverlapSphereNonAlloc(results[0].point, max, neighbours, ~layerMask) == 0 ? true : false;
@@ -108,6 +108,8 @@ public sealed class TowersSystem : MonoBehaviour {
 
                     spawnZoneIsValid.SetActive(false);
                 }
+
+                tower.transform.position = results[0].point + new Vector3(0, extents.y, 0);
             }
 
             else {
@@ -117,9 +119,16 @@ public sealed class TowersSystem : MonoBehaviour {
                 spawnZoneIsInvalid.SetActive(false);
             }
 
+            tower.SetActive(amount == 1);
+
             if (Input.GetMouseButtonDown(0)) {//Input.GetButtonDown("Fire")
+                spawnZoneIsValid.SetActive(false);
+                spawnZoneIsInvalid.SetActive(false);
+
+                DestroyObject(tower);
+
                 if (isFit)
-                    Debug.Log(results[0].point, results[0].transform);
+                    InstantiateTowerPrefab(towerPrefab, results[0].point + new Vector3(0, extents.y, 0));
 
                 yield break;
             }
@@ -128,7 +137,7 @@ public sealed class TowersSystem : MonoBehaviour {
         }
     }
 
-    public void GetReady()
+    void StartShooting()
     {
         keepShooting = true;
 
@@ -136,7 +145,7 @@ public sealed class TowersSystem : MonoBehaviour {
             StartCoroutine(StartShooting(tower.GetComponent<TowerComponent>(), Instantiate<GameObject>(projectilePrefab)));
     }
 
-    public void HoldFire()
+    void HoldFire()
     {
         keepShooting = false;
     }
@@ -160,7 +169,7 @@ public sealed class TowersSystem : MonoBehaviour {
         var layerMask = 1 << GetComponent<GameSystem>().layerMonster;
 
         while (keepShooting) {
-            monsterInAttackArea = Physics.OverlapSphereNonAlloc(tower.transform.position, tower.towerParams.attackRadius, targets, layerMask, QueryTriggerInteraction.Ignore) > 0 ? true : false;
+            monsterInAttackArea = Physics.OverlapSphereNonAlloc(tower.transform.position, tower.towerParams.attackRadius, targets, layerMask) > 0 ? true : false;
 
             if (!monsterInAttackArea) {
                 if (projectile.gameObject.activeSelf)
@@ -182,7 +191,7 @@ public sealed class TowersSystem : MonoBehaviour {
 
             StartCoroutine(CheckProjectile(projectileRigidbody, contactRadius, hitDamage));
 
-            projectileRigidbody.AddForce(force * 20, ForceMode.VelocityChange);
+            projectileRigidbody.AddForce(force * 20.0f / tower.towerParams.fireRate, ForceMode.VelocityChange);
 
             yield return shotDuration;
         }
@@ -198,14 +207,17 @@ public sealed class TowersSystem : MonoBehaviour {
         var layerMask = 1 << GetComponent<GameSystem>().layerMonster;
 
         while (true) {
-            projectileHasHitMonster = Physics.OverlapSphereNonAlloc(rigidbody.position, contactRadius, monster, layerMask, QueryTriggerInteraction.Ignore) > 0 ? true : false;
+            projectileHasHitMonster = Physics.OverlapSphereNonAlloc(rigidbody.position, contactRadius, monster, layerMask) > 0 ? true : false;
 
             if (projectileHasHitMonster) {
                 rigidbody.gameObject.SetActive(false);
 
-                var message = new GameSystem.ProjectileHasHitMonsterMessage(monster[0].gameObject, hitDamage);
+                var message = new MonstersSystem.ProjectileHasHitMonsterMessage {
+                    monster = monster[0].gameObject,
+                    hitDamage = hitDamage
+                };
 
-                pubSubHub.Publish(rigidbody.gameObject, message);
+                SendMessage("ApplyDamageToMonster", message, SendMessageOptions.RequireReceiver);
 
                 yield break;
             }
